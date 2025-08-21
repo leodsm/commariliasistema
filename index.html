@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComMarília - Editor e Visualizador</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Ícones Feather -->
+    <script src="https://unpkg.com/feather-icons"></script>
+    
+    <!-- Swiper.js (para o player de stories) -->
+    <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css" />
+    <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
+
+    <!-- Day.js (para formatar datas) -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/relativeTime.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/pt-br.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        
+        /* --- ESTILOS DO EDITOR --- */
+        .editor-grid { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; height: calc(100vh - 80px); }
+        @media (max-width: 1024px) { .editor-grid { grid-template-columns: 1fr; } }
+        .form-section { background-color: white; border-radius: 0.75rem; padding: 1.5rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); }
+        .page-item { cursor: grab; }
+        .page-item:active { cursor: grabbing; }
+
+        /* --- ESTILOS DO VISUALIZADOR (HOME) --- */
+        .news-card-home::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 40%, transparent 70%); transition: opacity 0.3s ease; }
+        .logo-text-com { color: #F4A261; }
+        .logo-text-marilia { color: #1D3557; }
+
+        /* --- ESTILOS DO PLAYER DE STORY --- */
+        #story-viewer { transform: scale(0.95); opacity: 0; visibility: hidden; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, visibility 0s 0.3s; }
+        #story-viewer.open { transform: scale(1); opacity: 1; visibility: visible; transition-delay: 0s; }
+        .story-player-wrapper { width: 100%; height: 100%; max-width: 450px; aspect-ratio: 9 / 16; position: relative; overflow: hidden; border-radius: 2rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+        @media (max-width: 768px) { .story-player-wrapper { max-width: 100%; height: 100vh; aspect-ratio: auto; border-radius: 0; } }
+        .news-card-story { display: flex; flex-direction: column; height: 100%; width: 100%; color: white; position: relative; }
+        .news-card-story::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%); z-index: 2; }
+        .news-content { position: relative; z-index: 3; padding: 2rem; margin-top: auto; width: 100%; text-align: left; }
+        
+        /* --- PAGINAÇÃO CUSTOMIZADA DO SWIPER --- */
+        .swiper-main > .swiper-pagination-bullets.swiper-pagination-vertical { right: 15px; top: 50%; transform: translateY(-50%); }
+        .swiper-main > .swiper-pagination-bullets .swiper-pagination-bullet { background-color: rgba(255, 255, 255, 0.8); width: 8px; height: 8px; display: block; margin: 10px 0 !important; }
+        .swiper-main > .swiper-pagination-bullets .swiper-pagination-bullet-active { background-color: #fff; height: 24px; border-radius: 8px; }
+        .swiper-details > .swiper-pagination-bullets { bottom: 20px; }
+        .swiper-details .swiper-pagination-bullet { background-color: rgba(255, 255, 255, 0.7); }
+        .swiper-details .swiper-pagination-bullet-active { background-color: #fff; width: 20px; border-radius: 5px; }
+        
+        /* --- ANIMAÇÃO BOTÃO 'MATÉRIA COMPLETA' --- */
+        @keyframes bounce-up { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .animate-bounce-up { animation: bounce-up 1.5s ease-in-out infinite; }
+        .open-modal-btn { transition: opacity 0.5s ease-in-out; opacity: 1; }
+        .open-modal-btn.fade-out { opacity: 0; pointer-events: none; }
+
+        /* --- ESTILOS DO MODAL DE MATÉRIA COMPLETA --- */
+        #story-modal { visibility: hidden; transition: visibility 0s 0.4s, opacity 0.3s ease-in-out; }
+        #story-modal.open { visibility: visible; opacity: 1; transition-delay: 0s; }
+        #story-modal-content { transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        #story-modal.open #story-modal-content { transform: translateY(0); }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="text-slate-800">
+
+    <!-- ================================================================= -->
+    <!-- ==================   SEÇÃO DO VISUALIZADOR (HOME)   ==================== -->
+    <!-- ================================================================= -->
+    <div id="viewer-section">
+        <header class="bg-white/80 backdrop-blur-lg shadow-sm sticky top-0 z-40">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center max-w-5xl">
+                <div class="text-2xl font-black"><span class="logo-text-com">Com</span><span class="logo-text-marilia">Marília.</span></div>
+                <a href="#editor" class="text-gray-600 hover:text-gray-900" aria-label="Acessar o editor">
+                    <i data-feather="edit" class="w-6 h-6"></i>
+                </a>
+            </div>
+        </header>
+
+        <main class="container mx-auto px-4 py-8 max-w-5xl">
+            <h1 class="text-3xl font-bold mb-6 text-gray-900">Últimas Notícias</h1>
+            <div id="news-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Cards de notícias são gerados dinamicamente -->
+            </div>
+        </main>
+
+        <!-- Player de Web Story -->
+        <div id="story-viewer" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
+            <div id="story-player-container" class="story-player-wrapper">
+                <!-- O Player será renderizado aqui via JS -->
+            </div>
+             <button id="close-story-viewer-btn" class="absolute top-5 right-5 text-white bg-black/30 rounded-full p-2 z-10">
+                <i data-feather="x" class="w-8 h-8"></i>
+            </button>
+        </div>
+
+        <!-- Modal da Matéria Completa -->
+        <div id="story-modal" class="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center opacity-0 pointer-events-none">
+            <div id="story-modal-content" class="relative bg-white w-full max-h-[95vh] max-w-2xl rounded-t-2xl flex flex-col">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <h3 id="modal-title" class="text-lg font-bold text-gray-800"></h3>
+                    <button id="close-modal-btn" class="text-gray-500 hover:text-gray-800"><i data-feather="x" class="w-6 h-6"></i></button>
+                </div>
+                <div class="p-6 overflow-y-auto">
+                    <img id="modal-image" src="" alt="" class="w-full h-auto rounded-lg mb-4 object-cover">
+                    <div id="modal-text" class="prose text-gray-700"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- =====================   SEÇÃO DO EDITOR   ======================= -->
+    <!-- ================================================================= -->
+    <div id="editor-section" class="hidden">
+        <header class="bg-white/80 backdrop-blur-lg shadow-sm sticky top-0 z-40">
+            <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-slate-900">Editor de Stories</h1>
+                <a href="#" class="text-gray-600 hover:text-gray-900" aria-label="Voltar para a home">
+                    <i data-feather="eye" class="w-6 h-6"></i>
+                </a>
+            </div>
+        </header>
+
+        <main class="container mx-auto p-6">
+            <div class="editor-grid">
+                <aside class="flex flex-col gap-6">
+                    <div class="form-section flex-1 flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">Meus Posts</h2>
+                            <button id="add-post-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                                <i data-feather="plus" class="w-5 h-5"></i><span>Novo Post</span>
+                            </button>
+                        </div>
+                        <div id="posts-list" class="overflow-y-auto h-full pr-2"></div>
+                    </div>
+                </aside>
+                <main id="editor-panel" class="h-full overflow-y-auto pr-2 space-y-6 hidden">
+                    <form id="post-form">
+                        <input type="hidden" id="post-id">
+                        <div class="form-section">
+                            <h3 class="font-bold text-lg mb-4 border-b pb-2">Informações Gerais</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="cardTitle" class="font-semibold text-sm text-gray-700 block mb-1">Título do Post</label>
+                                    <input type="text" id="cardTitle" class="w-full p-2 border rounded-lg" required>
+                                </div>
+                                <div>
+                                    <label for="category" class="font-semibold text-sm text-gray-700 block mb-1">Categoria</label>
+                                    <input type="text" id="category" class="w-full p-2 border rounded-lg">
+                                </div>
+                                <div>
+                                    <label for="cardImage" class="font-semibold text-sm text-gray-700 block mb-1">URL da Imagem do Card</label>
+                                    <input type="url" id="cardImage" class="w-full p-2 border rounded-lg">
+                                </div>
+                                 <div>
+                                    <label for="fullContentImage" class="font-semibold text-sm text-gray-700 block mb-1">URL da Imagem da Matéria</label>
+                                    <input type="url" id="fullContentImage" class="w-full p-2 border rounded-lg">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-section mt-6">
+                            <h3 class="font-bold text-lg mb-4 border-b pb-2">Matéria Completa</h3>
+                            <div>
+                                <label for="fullContentTitle" class="font-semibold text-sm text-gray-700 block mb-1">Título da Matéria</label>
+                                <input type="text" id="fullContentTitle" class="w-full p-2 border rounded-lg mb-4">
+                            </div>
+                            <div>
+                                <label for="fullContentBody" class="font-semibold text-sm text-gray-700 block mb-1">Corpo da Matéria</label>
+                                <textarea id="fullContentBody" class="w-full p-2 border rounded-lg" rows="12"></textarea>
+                            </div>
+                        </div>
+                        <div class="form-section mt-6">
+                            <h3 class="font-bold text-lg mb-4 border-b pb-2">Páginas do Story</h3>
+                            <div id="pages-container" class="space-y-4"></div>
+                            <button type="button" id="add-page-btn" class="w-full mt-4 bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300">Adicionar Página</button>
+                        </div>
+                        <div class="form-section mt-6 flex justify-end gap-4">
+                            <button type="button" id="delete-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700">Excluir Post</button>
+                            <button type="submit" id="save-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">Salvar Alterações</button>
+                        </div>
+                    </form>
+                </main>
+                <div id="welcome-message" class="flex items-center justify-center h-full form-section">
+                    <div class="text-center text-gray-500">
+                        <i data-feather="edit-3" class="w-16 h-16 mx-auto mb-4"></i>
+                        <h2 class="text-2xl font-bold">Bem-vindo!</h2>
+                        <p>Selecione um post para editar ou crie um novo.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURAÇÃO INICIAL ---
+            dayjs.extend(dayjs_plugin_relativeTime);
+            dayjs.locale('pt-br');
+            const STORAGE_KEY = 'simple_story_editor_posts';
+
+            // --- FUNÇÕES DE LOCALSTORAGE ---
+            const loadPostsFromStorage = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            const savePostsToStorage = (posts) => localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
+
+            // --- ROTEADOR SIMPLES ---
+            const router = () => {
+                const viewerSection = document.getElementById('viewer-section');
+                const editorSection = document.getElementById('editor-section');
+                
+                if (window.location.hash === '#editor') {
+                    viewerSection.classList.add('hidden');
+                    editorSection.classList.remove('hidden');
+                    initEditorApp();
+                } else {
+                    editorSection.classList.add('hidden');
+                    viewerSection.classList.remove('hidden');
+                    initViewerApp();
+                }
+                feather.replace();
+            };
+
+            // ========================================================
+            // ================== APP DO VISUALIZADOR (HOME) ==================
+            // ========================================================
+            let viewerAppInitialized = false;
+            const initViewerApp = () => {
+                if (viewerAppInitialized && document.getElementById('news-grid').innerHTML !== '') return;
+                
+                const newsGrid = document.getElementById('news-grid');
+                const storyViewer = document.getElementById('story-viewer');
+                const storyPlayerContainer = document.getElementById('story-player-container');
+                const closeStoryViewerBtn = document.getElementById('close-story-viewer-btn');
+                const storyModal = document.getElementById('story-modal');
+                const closeModalBtn = document.getElementById('close-modal-btn');
+
+                let posts = [];
+                let mainSwiper = null;
+
+                const renderNewsGrid = () => {
+                    newsGrid.innerHTML = '';
+                    posts = loadPostsFromStorage().sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+                    
+                    if (posts.length === 0) {
+                        newsGrid.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhuma notícia publicada. Acesse o editor para criar uma.</p>`;
+                        return;
+                    }
+
+                    posts.forEach((post, index) => {
+                        const card = document.createElement('div');
+                        card.className = "news-card-home relative rounded-xl shadow-lg overflow-hidden cursor-pointer h-[480px] group";
+                        card.dataset.postIndex = index;
+                        card.innerHTML = `
+                            <img src="${post.cardImage || 'https://placehold.co/600x800/e2e8f0/a0aec0?text=Imagem'}" alt="${post.cardTitle}" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-in-out">
+                            <div class="absolute bottom-0 left-0 p-5 text-white z-10">
+                                <span class="text-white text-xs font-bold px-3 py-1 rounded-full" style="background-color: ${post.categoryColor || '#4A5568'};">${post.category || 'Geral'}</span>
+                                <h2 class="text-xl font-bold mt-2 leading-tight">${post.cardTitle}</h2>
+                            </div>
+                        `;
+                        card.addEventListener('click', () => openStoryPlayer(index));
+                        newsGrid.appendChild(card);
+                    });
+                };
+                
+                const openStoryPlayer = (initialPostIndex) => {
+                    const postsWithPages = posts.filter(p => p.pages && p.pages.length > 0);
+                    if (postsWithPages.length === 0) return;
+
+                    const mainSwiperHTML = postsWithPages.map((post, postIndex) => `
+                        <div class="swiper-slide" data-post-id="${post.id}">
+                            <div class="swiper swiper-details h-full w-full">
+                                <div class="swiper-wrapper">
+                                    ${post.pages.map(page => `
+                                        <div class="swiper-slide">
+                                            <div class="news-card-story">
+                                                <img src="${page.mediaUrl || 'https://placehold.co/1080x1920/1a202c/4a5568?text=Mídia'}" class="absolute inset-0 w-full h-full object-cover z-0"/>
+                                                <div class="news-content">
+                                                    <span class="bg-sky-600 text-white text-xs font-bold px-3 py-1 rounded-full mb-3 inline-block">${post.category || 'Geral'}</span>
+                                                    <h1 class="text-xl md:text-2xl font-black mb-2">${post.cardTitle}</h1>
+                                                    <p class="text-base opacity-90">${page.title || ''}</p>
+                                                    <button class="open-modal-btn mt-6 text-white font-semibold py-3 px-0 rounded-full flex flex-col items-center gap-1 w-full animate-bounce-up" data-post-id="${post.id}">
+                                                        <i data-feather="chevron-up" class="w-8 h-8"></i>
+                                                        <span class="text-xs font-semibold">Matéria Completa</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="swiper-pagination"></div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    storyPlayerContainer.innerHTML = `<div class="swiper swiper-main h-full w-full"><div class="swiper-wrapper">${mainSwiperHTML}</div><div class="swiper-pagination"></div></div>`;
+                    
+                    storyViewer.classList.add('open');
+                    document.body.style.overflow = 'hidden';
+                    feather.replace();
+
+                    if (mainSwiper) mainSwiper.destroy(true, true);
+                    
+                    mainSwiper = new Swiper('.swiper-main', {
+                        direction: 'vertical',
+                        initialSlide: postsWithPages.findIndex(p => p.id === posts[initialPostIndex].id),
+                        loop: false,
+                        speed: 800,
+                        pagination: { el: '.swiper-main > .swiper-pagination', clickable: true },
+                        keyboard: { enabled: true },
+                        mousewheel: true,
+                        on: {
+                            init: (swiper) => manageButtonVisibility(swiper),
+                            slideChange: (swiper) => manageButtonVisibility(swiper),
+                        }
+                    });
+
+                    const detailSwipers = new Swiper('.swiper-details', {
+                        loop: false,
+                        speed: 600,
+                        pagination: { el: '.swiper-pagination', clickable: true },
+                        nested: true,
+                        keyboard: { enabled: true },
+                    });
+                    
+                    storyPlayerContainer.querySelectorAll('.open-modal-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const postId = btn.dataset.postId;
+                            const post = posts.find(p => p.id === postId);
+                            if(post) openStoryModal(post);
+                        });
+                    });
+                };
+
+                const closeStoryPlayer = () => {
+                    storyViewer.classList.remove('open');
+                    document.body.style.overflow = '';
+                    if (mainSwiper) mainSwiper.destroy(true, true);
+                    mainSwiper = null;
+                    storyPlayerContainer.innerHTML = '';
+                };
+                
+                let hideButtonTimeout;
+                const manageButtonVisibility = (swiperInstance) => {
+                    clearTimeout(hideButtonTimeout);
+                    const activeSlide = swiperInstance.slides[swiperInstance.activeIndex];
+                    if (!activeSlide) return;
+                    
+                    swiperInstance.slides.forEach(slide => slide.querySelector('.open-modal-btn')?.classList.remove('fade-out'));
+                    
+                    const buttonToHide = activeSlide.querySelector('.open-modal-btn');
+                    if (!buttonToHide) return;
+
+                    hideButtonTimeout = setTimeout(() => buttonToHide.classList.add('fade-out'), 2000);
+                };
+                
+                const openStoryModal = (post) => {
+                    document.getElementById('modal-title').textContent = post.fullContentTitle || post.cardTitle;
+                    document.getElementById('modal-image').src = post.fullContentImage || '';
+                    document.getElementById('modal-text').innerHTML = post.fullContentBody ? post.fullContentBody.replace(/\n/g, '<br>') : 'Matéria não disponível.';
+                    storyModal.classList.add('open', 'pointer-events-auto');
+                };
+
+                const closeStoryModal = () => storyModal.classList.remove('open', 'pointer-events-auto');
+
+                closeStoryViewerBtn.addEventListener('click', closeStoryPlayer);
+                closeModalBtn.addEventListener('click', closeStoryModal);
+                storyModal.addEventListener('click', (e) => { if(e.target === storyModal) closeStoryModal() });
+
+                renderNewsGrid();
+                viewerAppInitialized = true;
+            };
+
+
+            // ========================================================
+            // ===================== APP DO EDITOR ====================
+            // ========================================================
+            let editorAppInitialized = false;
+            const initEditorApp = () => {
+                if (editorAppInitialized) return;
+                
+                const postsListEl = document.getElementById('posts-list');
+                const addPostBtn = document.getElementById('add-post-btn');
+                const editorPanel = document.getElementById('editor-panel');
+                const welcomeMessage = document.getElementById('welcome-message');
+                const postForm = document.getElementById('post-form');
+                const postIdInput = document.getElementById('post-id');
+                const deleteBtn = document.getElementById('delete-btn');
+                const pagesContainer = document.getElementById('pages-container');
+                const addPageBtn = document.getElementById('add-page-btn');
+                
+                let posts = [];
+                let currentPostId = null;
+
+                const renderPostsList = () => {
+                    postsListEl.innerHTML = '';
+                    posts = loadPostsFromStorage().sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+                    
+                    if (posts.length === 0) {
+                        postsListEl.innerHTML = `<p class="text-center text-gray-500 p-8">Nenhum post criado.</p>`;
+                        return;
+                    }
+                    posts.forEach(post => {
+                        const postEl = document.createElement('div');
+                        postEl.className = `p-3 rounded-lg cursor-pointer mb-2 transition-colors ${post.id === currentPostId ? 'bg-blue-100 border-blue-500 border' : 'hover:bg-gray-100 border border-transparent'}`;
+                        postEl.dataset.postId = post.id;
+                        postEl.innerHTML = `<h3 class="font-semibold truncate">${post.cardTitle || 'Post sem título'}</h3><p class="text-xs text-gray-500">Modificado: ${dayjs(post.lastModified).fromNow()}</p>`;
+                        postEl.addEventListener('click', () => selectPost(post.id));
+                        postsListEl.appendChild(postEl);
+                    });
+                };
+
+                const renderEditor = () => {
+                    if (!currentPostId) {
+                        editorPanel.classList.add('hidden');
+                        welcomeMessage.classList.remove('hidden');
+                        return;
+                    }
+                    const post = posts.find(p => p.id === currentPostId);
+                    if (!post) return;
+
+                    editorPanel.classList.remove('hidden');
+                    welcomeMessage.classList.add('hidden');
+                    postForm.reset();
+                    postIdInput.value = post.id;
+                    document.getElementById('cardTitle').value = post.cardTitle || '';
+                    document.getElementById('category').value = post.category || '';
+                    document.getElementById('cardImage').value = post.cardImage || '';
+                    document.getElementById('fullContentImage').value = post.fullContentImage || '';
+                    document.getElementById('fullContentTitle').value = post.fullContentTitle || '';
+                    document.getElementById('fullContentBody').value = post.fullContentBody || '';
+                    renderPages(post.pages || []);
+                };
+
+                const renderPages = (pages) => {
+                    pagesContainer.innerHTML = '';
+                    if (!pages || pages.length === 0) {
+                        pagesContainer.innerHTML = `<p class="text-center text-sm text-gray-500 py-4">Nenhuma página adicionada.</p>`;
+                    } else {
+                        pages.forEach((page, index) => {
+                            const pageEl = document.createElement('div');
+                            pageEl.className = 'p-4 bg-slate-50 rounded-lg border space-y-3 page-item';
+                            pageEl.dataset.pageId = page.id;
+                            pageEl.innerHTML = `
+                                <div class="flex justify-between items-center"><span class="font-bold text-gray-600">Página ${index + 1}</span><button type="button" class="remove-page-btn text-red-500 hover:text-red-700 font-bold">Remover</button></div>
+                                <div><label class="font-semibold text-xs text-gray-600 block mb-1">Título da Página</label><input type="text" class="page-title w-full p-2 border rounded-lg" value="${page.title || ''}"></div>
+                                <div><label class="font-semibold text-xs text-gray-600 block mb-1">URL da Mídia</label><input type="url" class="page-media-url w-full p-2 border rounded-lg" value="${page.mediaUrl || ''}"></div>`;
+                            pagesContainer.appendChild(pageEl);
+                        });
+                    }
+                };
+                
+                const selectPost = (id) => { currentPostId = id; renderPostsList(); renderEditor(); };
+                
+                addPostBtn.addEventListener('click', () => {
+                    const newPost = { id: `post_${Date.now()}`, cardTitle: 'Novo Post', lastModified: new Date().toISOString(), pages: [] };
+                    posts.push(newPost);
+                    savePostsToStorage(posts);
+                    currentPostId = newPost.id;
+                    renderPostsList();
+                    renderEditor();
+                });
+
+                postForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    if (!currentPostId) return;
+                    const postIndex = posts.findIndex(p => p.id === currentPostId);
+                    if (postIndex === -1) return;
+
+                    const pagesData = Array.from(pagesContainer.querySelectorAll('.page-item')).map(el => ({ id: el.dataset.pageId, title: el.querySelector('.page-title').value, mediaUrl: el.querySelector('.page-media-url').value }));
+                    
+                    const updatedPost = { ...posts[postIndex], cardTitle: document.getElementById('cardTitle').value, category: document.getElementById('category').value, cardImage: document.getElementById('cardImage').value, fullContentImage: document.getElementById('fullContentImage').value, fullContentTitle: document.getElementById('fullContentTitle').value, fullContentBody: document.getElementById('fullContentBody').value, lastModified: new Date().toISOString(), pages: pagesData };
+                    
+                    posts[postIndex] = updatedPost;
+                    savePostsToStorage(posts);
+                    renderPostsList();
+                });
+
+                deleteBtn.addEventListener('click', () => {
+                    if (!currentPostId || !confirm('Deseja excluir este post?')) return;
+                    posts = posts.filter(p => p.id !== currentPostId);
+                    savePostsToStorage(posts);
+                    currentPostId = null;
+                    renderPostsList();
+                    renderEditor();
+                });
+
+                addPageBtn.addEventListener('click', () => {
+                    if (!currentPostId) return;
+                    const post = posts.find(p => p.id === currentPostId);
+                    if (!post) return;
+                    if (!post.pages) post.pages = [];
+                    post.pages.push({ id: `page_${Date.now()}`, title: '', mediaUrl: '' });
+                    renderPages(post.pages);
+                });
+
+                pagesContainer.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('remove-page-btn')) {
+                        const post = posts.find(p => p.id === currentPostId);
+                        if (!post || !post.pages) return;
+                        const pageId = e.target.closest('.page-item').dataset.pageId;
+                        post.pages = post.pages.filter(p => p.id !== pageId);
+                        renderPages(post.pages);
+                    }
+                });
+                
+                renderPostsList();
+                renderEditor();
+                editorAppInitialized = true;
+            };
+
+            // --- PONTO DE ENTRADA DA APLICAÇÃO ---
+            window.addEventListener('hashchange', router);
+            router(); // Roda na carga inicial
+        });
+    </script>
+</body>
+</html>
